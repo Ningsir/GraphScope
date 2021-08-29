@@ -193,7 +193,8 @@ public class InstanceManagerController {
                                                @RequestParam("preemptive") String preemptive,
                                                @RequestParam("gremlinServerCpu") String gremlinServerCpu,
                                                @RequestParam("gremlinServerMem") String gremlinServerMem,
-                                               @RequestParam("engineParams") String engineParams) throws Exception {
+                                               @RequestParam("engineParams") String engineParams,
+                                               @RequestParam("zookeeperIp") String zookeeperIp) throws Exception {
         CreateInstanceEntity createInstanceEntity = new CreateInstanceEntity();
         int errorCode;
         String errorMessage;
@@ -229,6 +230,7 @@ public class InstanceManagerController {
             createCommandList.add(gremlinServerCpu);
             createCommandList.add(gremlinServerMem);
             createCommandList.add(engineParams);
+            createCommandList.add(zookeeperIp);
             String command = StringUtils.join(createCommandList, " ");
             logger.info("start to create instance with command " + command);
             Process process = Runtime.getRuntime().exec(command);
@@ -286,12 +288,13 @@ public class InstanceManagerController {
                 .port(port)
                 .serializer(serializer)
                 .create();
-        Client client = cluster.connect();
+	Client client = null;
         long start = System.currentTimeMillis();
         long end = start + LAUNCH_MAX_TIME_LILL;
         while (start < end) {
             try {
                 Thread.sleep(10000);
+                client = cluster.connect();
                 client.submit("g.V().limit(1)").all().get();
                 client.close();
                 cluster.close();
@@ -301,7 +304,9 @@ public class InstanceManagerController {
             }
             start = System.currentTimeMillis();
         }
-        client.close();
+        if (client != null) {
+            client.close();
+        }
         cluster.close();
         return false;
     }
