@@ -135,7 +135,7 @@ class Label:
     @classmethod
     def from_type_def(cls, pb):
         label = cls(pb.label)
-        label._label_id = pb.label_id
+        label._label_id = pb.label_id.id
         label._version_id = pb.version_id
         for prop_pb in pb.props:
             label._props.append(Property.from_property_def(prop_pb))
@@ -240,12 +240,19 @@ class GraphSchema:
         """
         self._vertex_labels.clear()
         self._edge_labels.clear()
+        id_to_label = {}
+        for type_def_pb in graph_def.type_defs:
+            id_to_label[type_def_pb.label_id.id] = type_def_pb.label
         edge_kinds = {}
         for kind in graph_def.edge_kinds:
-            if kind.edge_label not in edge_kinds:
-                edge_kinds[kind.edge_label] = []
-            edge_kinds[kind.edge_label].append(
-                (kind.src_vertex_label, kind.dst_vertex_label)
+            edge_label = id_to_label[kind.edge_label_id.id]
+            if edge_label not in edge_kinds:
+                edge_kinds[edge_label] = []
+            edge_kinds[edge_label].append(
+                (
+                    id_to_label[kind.src_vertex_label_id.id],
+                    id_to_label[kind.dst_vertex_label_id.id],
+                )
             )
         for type_def_pb in graph_def.type_defs:
             if type_def_pb.type_enum == graph_def_pb2.VERTEX:
@@ -310,8 +317,18 @@ class GraphSchema:
         """Schema for `nx.Graph`
 
         Args:
-            gs_schema (`GraphSchema`, optional): schema of a graphscope `Graph`. Defaults to None.
+            gs_schema (`GraphSchema`, optional): schema of a graphscope `Graph`. Defaults to None,
+        create an empty networkx graph schema.
         """
+        # init empty schema
+        self._vertex_labels = [VertexLabel("_")]
+        self._v_label_index["_"] = 0
+        self._edge_labels = [EdgeLabel("_")]
+        self._e_label_index["_"] = 0
+        self._edge_labels[0].source("_").destination("_")
+        self._valid_vertices = [1]
+        self._valid_edges = [1]
+
         if gs_schema is not None:
             for entry in gs_schema._valid_vertex_labels():
                 for props in entry.properties:
@@ -321,14 +338,6 @@ class GraphSchema:
                 for props in entry.properties:
                     if props.name not in self._edge_labels[0]._prop_index:
                         self._edge_labels[0].add_property(props.name, props.type)
-        else:
-            self._vertex_labels.append(VertexLabel("_"))
-            self._v_label_index["_"] = 0
-            self._edge_labels.append(EdgeLabel("_"))
-            self._e_label_index["_"] = 0
-            self._edge_labels[0].source("_").destination("_")
-            self._valid_vertices = [1]
-            self._valid_edges = [1]
 
     def __repr__(self):
         s = f"oid_type: {self._oid_type}\nvid_type: {self._vid_type}\n"

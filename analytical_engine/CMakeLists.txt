@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.1)
 
 if ("${GRAPHSCOPE_VERSION}" STREQUAL "")
     set(GRAPHSCOPE_ANALYTICAL_MAJOR_VERSION 0)
-    set(GRAPHSCOPE_ANALYTICAL_MINOR_VERSION 6)
+    set(GRAPHSCOPE_ANALYTICAL_MINOR_VERSION 7)
     set(GRAPHSCOPE_ANALYTICAL_PATCH_VERSION 0)
     set(GRAPHSCOPE_ANALYTICAL_VERSION ${GRAPHSCOPE_ANALYTICAL_MAJOR_VERSION}.${GRAPHSCOPE_ANALYTICAL_MINOR_VERSION}.${GRAPHSCOPE_ANALYTICAL_PATCH_VERSION})
 else ()
@@ -94,6 +94,10 @@ include_directories(SYSTEM ${Boost_INCLUDE_DIRS})
 # eliminate a lot of warnings for newer version of boost library.
 add_compile_options(-DBOOST_BIND_GLOBAL_PLACEHOLDERS)
 
+# check the gcc abi
+include("cmake/CheckGCCABICompatibility.cmake")
+check_gcc_compatible()
+
 include("cmake/FindGFlags.cmake")
 if (GFLAGS_FOUND)
     include_directories(SYSTEM ${GFLAGS_INCLUDE_DIRS})
@@ -119,7 +123,7 @@ endif ()
 find_package(libgrapelite REQUIRED)
 include_directories(${LIBGRAPELITE_INCLUDE_DIRS})
 
-find_package(vineyard 0.2.6 REQUIRED)
+find_package(vineyard 0.3.1 REQUIRED)
 include_directories(${VINEYARD_INCLUDE_DIRS})
 add_compile_options(-DENABLE_SELECTOR)
 
@@ -240,6 +244,9 @@ if (BUILD_TESTS)
         add_vineyard_app(test_convert SRCS test/test_convert.cc)
         target_include_directories(test_convert PRIVATE ${FOLLY_ROOT_DIR}/include)
         target_link_libraries(test_convert ${FOLLY_LIBRARIES} ${DOUBLE_CONVERSION_LIBRARY})
+
+        target_include_directories(run_ctx PUBLIC ${FOLLY_ROOT_DIR}/include)
+        target_link_libraries(run_ctx ${FOLLY_LIBRARIES} ${DOUBLE_CONVERSION_LIBRARY})
     endif ()
 endif ()
 
@@ -301,9 +308,9 @@ endmacro()
 macro(install_gsa_dependency_modules cmake_target)
     get_filename_component(ABS_DIR ${cmake_target} REALPATH)
     install(DIRECTORY ${ABS_DIR}
-            DESTINATION lib                     # target directory
-            FILES_MATCHING                      # install only matched files
-            PATTERN "*.cmake"                   # select cmake files
+            DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/graphscope-analytical  # target directory
+            FILES_MATCHING                                                   # install only matched files
+            PATTERN "*.cmake"                                                # select cmake files
             )
 endmacro()
 

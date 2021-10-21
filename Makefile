@@ -3,13 +3,15 @@ WORKING_DIR 			:= $(dir $(MKFILE_PATH))
 NUM_PROC                := $( $(command -v nproc &> /dev/null) && echo $(nproc) || echo $(sysctl -n hw.physicalcpu) )
 
 VERSION                     ?= 0.1.0
-INSTALL_PREFIX              ?= /usr/local
+INSTALL_PREFIX              ?= /opt/graphscope
+
+BUILD_TYPE                  ?= release
 
 # GAE build options
-NETWORKX                    ?= OFF
+NETWORKX                    ?= ON
 
 # client build options
-WITH_LEARNING_ENGINE        ?= OFF
+WITH_LEARNING_ENGINE        ?= ON
 
 # testing build option
 BUILD_TEST                  ?= OFF
@@ -42,7 +44,7 @@ push:
 	$(MAKE) -C $(WORKING_DIR)/k8s/ push
 
 .PHONY: install
-install: gle client coordinator gae gie
+install: gle client gae gie coordinator
 
 .PHONY: client
 client: gle
@@ -63,6 +65,21 @@ gae:
 	cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX) -DNETWORKX=$(NETWORKX) -DBUILD_TESTS=${BUILD_TEST} .. && \
 	make -j$(NUM_PROC) && \
 	sudo make install
+ifneq ($(INSTALL_PREFIX), /usr/local)
+	sudo rm -fr /usr/local/include/graphscope && \
+	sudo ln -sf $(INSTALL_PREFIX)/bin/* /usr/local/bin/ && \
+	sudo ln -sfn $(INSTALL_PREFIX)/include/graphscope /usr/local/include/graphscope && \
+	sudo ln -sf ${INSTALL_PREFIX}/lib/*so* /usr/local/lib && \
+	sudo ln -sf ${INSTALL_PREFIX}/lib/*dylib* /usr/local/lib && \
+	if [ -d "${INSTALL_PREFIX}/lib64/cmake/graphscope-analytical" ]; then \
+		sudo rm -fr /usr/local/lib64/cmake/graphscope-analytical; \
+		sudo ln -sfn ${INSTALL_PREFIX}/lib64/cmake/graphscope-analytical /usr/local/lib64/cmake/graphscope-analytical; \
+		sudo mkdir -p ${INSTALL_PREFIX}/lib/cmake; \
+		sudo cp -r ${INSTALL_PREFIX}/lib64/cmake/* ${INSTALL_PREFIX}/lib/cmake/; \
+	else \
+		sudo ln -sfn ${INSTALL_PREFIX}/lib/cmake/graphscope-analytical /usr/local/lib/cmake/graphscope-analytical; \
+	fi
+endif
 
 .PHONY: gie
 gie:
@@ -70,19 +87,18 @@ gie:
 	cd $(WORKING_DIR)/interactive_engine && \
 	mvn clean package -DskipTests -Pjava-release
 	# executor
-	cd $(WORKING_DIR)/interactive_engine/src/executor && \
+	cd $(WORKING_DIR)/interactive_engine/executor && \
 	rustup component add rustfmt && \
-	cargo build --all
+	if [ x"release" = x"${BUILD_TYPE}" ]; then \
+		cargo build --all --release; \
+	else \
+		cargo build --all; \
+	fi
 	# install
 	mkdir -p $(WORKING_DIR)/.install_prefix && \
-	mkdir -p $(WORKING_DIR)/.install_prefix/bin && \
-	mkdir -p $(WORKING_DIR)/.install_prefix/conf && \
-	tar -xf $(WORKING_DIR)/interactive_engine/src/instance-manager/target/0.0.1-SNAPSHOT.tar.gz -C $(WORKING_DIR)/.install_prefix && \
-	tar -xf $(WORKING_DIR)/interactive_engine/src/assembly/target/0.0.1-SNAPSHOT.tar.gz -C $(WORKING_DIR)/.install_prefix && \
-	cp $(WORKING_DIR)/interactive_engine/src/executor/target/debug/executor $(WORKING_DIR)/.install_prefix/bin/executor && \
-	cp $(WORKING_DIR)/interactive_engine/src/executor/target/debug/gaia_executor $(WORKING_DIR)/.install_prefix/bin/gaia_executor && \
-	cp -r $(WORKING_DIR)/interactive_engine/bin/* $(WORKING_DIR)/.install_prefix/bin/ && \
-	cp -r $(WORKING_DIR)/interactive_engine/conf/* $(WORKING_DIR)/.install_prefix/conf/ && \
+	tar -xf $(WORKING_DIR)/interactive_engine/assembly/target/maxgraph-assembly-0.0.1-SNAPSHOT.tar.gz --strip-components 1 -C $(WORKING_DIR)/.install_prefix && \
+	cp $(WORKING_DIR)/interactive_engine/executor/target/$(BUILD_TYPE)/executor $(WORKING_DIR)/.install_prefix/bin/executor && \
+	cp $(WORKING_DIR)/interactive_engine/executor/target/$(BUILD_TYPE)/gaia_executor $(WORKING_DIR)/.install_prefix/bin/gaia_executor && \
 	sudo cp -r $(WORKING_DIR)/.install_prefix/* $(INSTALL_PREFIX) && \
 	rm -fr $(WORKING_DIR)/.install_prefix
 
@@ -97,6 +113,9 @@ ifeq ($(WITH_LEARNING_ENGINE), ON)
 	cmake -DCMAKE_INSTALL_PREFIX=$(INSTALL_PREFIX) -DWITH_VINEYARD=ON -DTESTING=${BUILD_TEST} .. && \
 	make -j$(NUM_PROC) && \
 	sudo make install
+ifneq ($(INSTALL_PREFIX), /usr/local)
+	sudo ln -sf ${INSTALL_PREFIX}/lib/*so* /usr/local/lib
+endif
 endif
 
 .PHONY: prepare-client

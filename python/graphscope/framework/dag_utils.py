@@ -278,6 +278,7 @@ def arrow_to_dynamic(graph):
         types_pb2.VID_TYPE: utils.s_to_attr(
             utils.data_type_to_cpp(graph.schema.vid_type)
         ),
+        types_pb2.DEFAULT_LABEL_ID: utils.i_to_attr(graph._default_label_id),
     }
     op = Operation(
         graph.session_id,
@@ -339,7 +340,14 @@ def modify_vertices(graph, modify_type, vertices):
 
 
 def report_graph(
-    graph, report_type, node=None, edge=None, fid=None, lid=None, key=None
+    graph,
+    report_type,
+    node=None,
+    edge=None,
+    fid=None,
+    lid=None,
+    key=None,
+    label_id=None,
 ):
     """Create report operation for nx graph.
 
@@ -381,6 +389,9 @@ def report_graph(
         types_pb2.GRAPH_NAME: utils.s_to_attr(graph.key),
         types_pb2.REPORT_TYPE: utils.report_type_to_attr(report_type),
     }
+    if graph.graph_type == graph_def_pb2.ARROW_PROPERTY:
+        config[types_pb2.DEFAULT_LABEL_ID] = utils.i_to_attr(graph._default_label_id)
+
     if node is not None:
         config[types_pb2.NODE] = utils.s_to_attr(node)
     if edge is not None:
@@ -389,6 +400,8 @@ def report_graph(
         config[types_pb2.FID] = utils.i_to_attr(fid)
     if lid is not None:
         config[types_pb2.LID] = utils.i_to_attr(lid)
+    if label_id is not None:
+        config[types_pb2.V_LABEL_ID] = utils.i_to_attr(label_id)
 
     config[types_pb2.EDGE_KEY] = utils.s_to_attr(str(key) if key is not None else "")
     op = Operation(
@@ -673,11 +686,9 @@ def unload_app(app):
     Returns:
         An op to unload the `app`.
     """
-    config = {}
     op = Operation(
         app.session_id,
         types_pb2.UNLOAD_APP,
-        config=config,
         inputs=[app.op],
         output_types=types_pb2.NULL_OUTPUT,
     )
@@ -693,12 +704,20 @@ def unload_graph(graph):
     Returns:
         An op to unload the `graph`.
     """
-    config = {}
     op = Operation(
         graph.session_id,
         types_pb2.UNLOAD_GRAPH,
-        config=config,
         inputs=[graph.op],
+        output_types=types_pb2.NULL_OUTPUT,
+    )
+    return op
+
+
+def unload_context(context):
+    op = Operation(
+        context.session_id,
+        types_pb2.UNLOAD_CONTEXT,
+        inputs=[context.op],
         output_types=types_pb2.NULL_OUTPUT,
     )
     return op
@@ -838,7 +857,7 @@ def output(result, fd, **kwargs):
 
 def get_context_data(results, node):
     config = {
-        types_pb2.CTX_NAME: utils.s_to_attr(results.key),
+        types_pb2.CONTEXT_KEY: utils.s_to_attr(results.key),
         types_pb2.NODE: utils.s_to_attr(node),
     }
     op = Operation(
@@ -925,7 +944,7 @@ def graph_to_dataframe(graph, selector=None, vertex_range=None):
     return op
 
 
-def create_interactive_query(graph, engine_params, cpu, mem, enable_gaia):
+def create_interactive_query(graph, engine_params, enable_gaia):
     """Create a interactive engine that query on the :code:`graph`
 
     Args:
@@ -934,15 +953,11 @@ def create_interactive_query(graph, engine_params, cpu, mem, enable_gaia):
         engine_params (dict, optional):
             Configuration to startup the interactive engine. See detail in:
             `interactive_engine/deploy/docker/dockerfile/executor.vineyard.properties`
-        cpu (float): The number of CPU cores for gremlin server.
-        mem (str): The number of mem  for gremlin server.
 
     Returns:
         An op to create a interactive engine based on a graph.
     """
     config = {}
-    config[types_pb2.GIE_GREMLIN_SERVER_CPU] = utils.f_to_attr(cpu)
-    config[types_pb2.GIE_GREMLIN_SERVER_MEM] = utils.s_to_attr(mem)
     if engine_params is not None:
         config[types_pb2.GIE_GREMLIN_ENGINE_PARAMS] = utils.s_to_attr(
             json.dumps(engine_params)
